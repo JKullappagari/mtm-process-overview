@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MTM Process Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="src/base.css">
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+<header class="top gut">
+  <div class="wrap brandrow">
+    <div class="brand">MTM<span>/</span>PROCESS EXPLORER</div>
+    <div class="eyebrow">Valuation date 16 Oct 2026 · Base USD · <a href="../">Process overview ←</a></div>
+  </div>
+  <div class="wrap hero">
+    <div>
+      <div class="eyebrow">Mark-to-market, end to end</div>
+      <h1>Every position, re-priced to the market every night.</h1>
+      <p class="lead">Mark-to-market (MTM) replaces what you paid for a position with what it is worth today. This page walks one fund's book through the nightly cycle: capture vendor prices, check them, transform them into valuations, push clean items straight through, route the rest to an analyst, and publish the standard reports.</p>
+      <div class="formula">MTM P&amp;L<sub>t</sub> = Quantity × Multiplier × (Price<sub>t</sub> − Price<sub>t−1</sub>) ÷ FX<sub>t</sub></div>
+      <div class="btnrow" style="margin-top:18px">
+        <button class="btn primary" id="runBtn" type="button">Run EOD batch</button>
+        <a class="btn" href="#reports" style="text-decoration:none">Jump to reports</a>
+      </div>
+    </div>
+    <aside class="ticket" aria-label="Worked example">
+      <div class="eyebrow" style="margin-bottom:8px">Worked mark · EQ-001</div>
+      <div class="row"><span>DBS Group Holdings (D05 SP)</span><b>Equity</b></div>
+      <div class="row"><span>Quantity</span><b>50,000</b></div>
+      <div class="row"><span>Prior official mark (15 Oct)</span><b id="tkPrior">SGD 38.20</b></div>
+      <div class="row"><span>Today's close (16 Oct)</span><b id="tkPx">SGD 38.65</b></div>
+      <div class="row"><span>USD/SGD</span><b id="tkFx">1.2990</b></div>
+      <div class="result" id="tkRes">50,000 × (38.65 − 38.20) = SGD 22,500 → USD 17,321</div>
+    </aside>
+  </div>
+</header>
+
+<nav class="rail gut" aria-label="Sections">
+  <div class="wrap">
+    <ul>
+      <li><a href="#concept">Concept</a></li>
+      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#inputs"><b>1</b>Inputs</a></li>
+      <li><a href="#transform"><b>2</b>Transform</a></li>
+      <li><a href="#stp"><b>3</b>STP rules</a></li>
+      <li><a href="#exceptions"><b>4</b>Exceptions</a></li>
+      <li><a href="#reports"><b>5</b>Reports</a></li>
+    </ul>
+    <div class="status-chip" id="navStatus"></div>
+  </div>
+</nav>
+
+<main class="gut">
+<div class="wrap">
+
+<section id="concept">
+  <div class="sec-head"><div class="stage-no">§</div><h2>How mark-to-market works</h2><p>Positions are carried at fair value, not cost. Each night the change in fair value becomes the day's P&amp;L, the basis for margin calls, and the number risk and finance report on.</p></div>
+  <div class="cols">
+    <div class="panel">
+      <h3>What gets marked</h3>
+      <p class="small muted">Each asset class has its own price convention, and the engine needs to know which one it is reading.</p>
+      <table style="margin-top:10px">
+        <tr><th>Class</th><th>Price used</th></tr>
+        <tr><td>Equities</td><td>Exchange close (last)</td></tr>
+        <tr><td>Bonds</td><td>Clean price % of par + accrued</td></tr>
+        <tr><td>Futures</td><td>Exchange settlement price</td></tr>
+        <tr><td>FX forwards</td><td>Forward outright, discounted</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Fair value hierarchy</h3>
+      <p class="small muted" style="margin-bottom:12px">IFRS 13 and ASC 820 grade every mark by how observable its input is. Lower levels get more scrutiny.</p>
+      <div class="levels">
+        <div><b>L1</b><span class="small">Quoted price for the identical instrument in an active market. Listed equities, futures, on-the-run government bonds.</span></div>
+        <div><b>L2</b><span class="small">Observable inputs other than a direct quote. Evaluated bond prices, FX forwards built from spot and points.</span></div>
+        <div><b>L3</b><span class="small">Unobservable inputs and model assumptions. Private credit, bespoke derivatives.</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>The nightly cycle (SGT)</h3>
+      <ol class="tl" style="margin-top:6px">
+        <li><time>17:00 T</time><span class="small">Asian markets close; exchange settlement prices published.</span></li>
+        <li><time>18:30 T</time><span class="small">Primary and secondary vendor files land; FX snapshot taken.</span></li>
+        <li><time>19:00 T</time><span class="small">Validate, normalise, value. STP controls run.</span></li>
+        <li><time>21:00 T</time><span class="small">Price challenge cut-off for exceptions.</span></li>
+        <li><time>07:00 T+1</time><span class="small">Valuation, P&amp;L and IPV reports to finance, risk and the fund administrator.</span></li>
+        <li><time>09:00 T+1</time><span class="small">Margin call notices issued under each CSA.</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="sec-head"><div class="stage-no">→</div><h2>The pipeline</h2><p>Seven steps from raw vendor files to distributed reports. Counts update live as you change market data, rules and resolutions below.</p></div>
+  <ol class="flow" id="flow"></ol>
+</section>
+
+<section id="inputs">
+  <div class="sec-head"><div class="stage-no">1</div><h2>Inputs: positions and market data</h2><p>Positions come from the books of record at end of day. Prices come from two independent vendors so they can be checked against each other. Edit any price, clear a box to simulate a missing feed, or load a scenario.</p></div>
+  <div class="btnrow" id="scenarios" style="margin-bottom:8px"></div>
+  <p class="small muted" id="scenarioDesc" style="margin-bottom:16px"></p>
+  <h3 style="margin-bottom:10px">Instrument prices</h3>
+  <div class="well"><table id="mdTable"></table></div>
+  <div class="cols" style="margin-top:16px">
+    <div style="min-width:0">
+      <h3 style="margin-bottom:10px">FX rates (units per 1 USD)</h3>
+      <div class="well"><table id="fxTable"></table></div>
+    </div>
+    <div class="panel">
+      <h3>Reading the inputs</h3>
+      <p class="small">The <b>prior mark</b> is yesterday's signed-off official price; it is the anchor for daily P&amp;L and the day-on-day check.</p>
+      <p class="small">The <b>primary</b> feed is the golden source. The <b>secondary</b> exists for independent price verification and as a fallback.</p>
+      <p class="small">A primary price that equals yesterday's mark and carries an old date is the classic sign of a stale evaluated price.</p>
+    </div>
+  </div>
+</section>
+
+<section id="transform">
+  <div class="sec-head"><div class="stage-no">2</div><h2>Transformation: from vendor record to valuation</h2><p>Vendors send prices in their own layouts. The engine normalises each record into one internal schema, enriches it with static data, FX and the prior mark, then applies the asset-class formula. Pick an instrument to trace its lineage.</p></div>
+  <div class="btnrow"><label for="linSel" class="small muted">Instrument</label><select id="linSel" style="width:auto;max-width:100%"></select></div>
+  <div class="lineage" id="lineage"></div>
+</section>
+
+<section id="stp">
+  <div class="sec-head"><div class="stage-no">3</div><h2>STP business rules</h2><p>Straight-through processing means a mark is released with no human touch. Every price passes six controls; anything that fails stops in the exception queue. Adjust the thresholds and watch the STP rate move.</p></div>
+  <div class="rules" id="rules"></div>
+  <h3 style="margin:26px 0 10px">Control results</h3>
+  <div class="meter" id="meter"></div>
+  <div class="well"><table id="ctlTable"></table></div>
+  <p class="small muted" style="margin-top:8px">PASS = control passed · FIX = auto-remediated within policy (still STP) · FAIL = exception · 4-EYE = needs a second approver · OFF = rule disabled</p>
+</section>
+
+<section id="exceptions">
+  <div class="sec-head"><div class="stage-no">4</div><h2>Exception queue</h2><p>Failed controls wait here for a valuation analyst. Each resolution records the price chosen and the reason, which feeds the audit trail in the IPV report. Reports stay in DRAFT until the queue is empty.</p></div>
+  <div class="queue" id="queue"></div>
+  <div class="resolved" id="resolvedList"></div>
+</section>
+
+<section id="reports">
+  <div class="sec-head"><div class="stage-no">5</div><h2>Report generation</h2><p>Five reports that valuation, finance and collateral teams produce every day. Choose a template and generate it from the current run.</p></div>
+  <div class="tpls" id="tpls"></div>
+  <div class="btnrow" style="margin-top:14px">
+    <button class="btn primary" id="genBtn" type="button">Generate report</button>
+    <button class="btn" id="csvBtn" type="button">Copy as CSV</button>
+    <span class="small muted" id="genNote"></span>
+  </div>
+  <textarea id="csvFallback" hidden readonly aria-label="CSV output"></textarea>
+  <div class="paper" id="paper"></div>
+</section>
+
+</div>
+</main>
+<footer class="gut"><div class="wrap">Sample book and prices are illustrative and not market data. Fund and counterparty names are fictional. Formulas are simplified for teaching: bond coupons, settlement lags and CSA interest are ignored.</div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
