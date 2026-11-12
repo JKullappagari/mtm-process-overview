@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>End-of-Day Mark-to-Market (MTM) Process: High-Level Overview</title>
+<meta name="description" content="A high-level guide to the end-of-day mark-to-market process: market data inputs, normalisation, valuation, STP controls, exception handling and reporting.">
+<style>
+:root{
+  --bg:#f7f6f2; --paper:#ffffff; --ink:#1d2330; --muted:#5b6475; --line:#e2e0d8;
+  --accent:#1f5f8b; --accent-soft:#e6eff6; --ok:#2e7d4f; --ok-soft:#e5f3ea;
+  --warn:#a86a00; --warn-soft:#fbf0db; --bad:#b03a2e; --bad-soft:#f8e6e3;
+  --rev:#6a4c9c; --rev-soft:#efe9f7; --code:#f1efe8;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171d; --paper:#1b1f27; --ink:#e6e8ec; --muted:#9aa3b2; --line:#2c323d;
+    --accent:#6fb0de; --accent-soft:#1d2d3b; --ok:#6cc391; --ok-soft:#1b2e24;
+    --warn:#e0a948; --warn-soft:#33291a; --bad:#e57a6e; --bad-soft:#3a2220;
+    --rev:#b39ce0; --rev-soft:#2a2438; --code:#232833;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif}
+.wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:40px;max-width:1180px;margin:0 auto;padding:40px 24px 80px}
+nav.toc{position:sticky;top:24px;align-self:start;font-size:14px}
+nav.toc h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+nav.toc ol{list-style:none;margin:0;padding:0;counter-reset:s}
+nav.toc li{counter-increment:s;margin:2px 0}
+nav.toc a{display:block;padding:4px 10px;border-left:2px solid var(--line);color:var(--muted);text-decoration:none}
+nav.toc a::before{content:counter(s) ". ";color:var(--muted)}
+nav.toc a:hover{color:var(--accent);border-left-color:var(--accent)}
+main{min-width:0}
+header.hero{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:8px}
+.eyebrow{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:600}
+h1{font-size:34px;line-height:1.2;margin:8px 0 12px;font-weight:700}
+.lede{font-size:18px;color:var(--muted);max-width:760px;margin:0}
+.meta{margin-top:16px;font-size:13px;color:var(--muted)}
+section{padding-top:36px}
+h2{font-size:24px;margin:0 0 12px;padding-top:4px}
+h3{font-size:17px;margin:24px 0 8px}
+p{margin:0 0 12px;max-width:820px}
+a{color:var(--accent)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:14px 0}
+.grid .card{margin:0}
+.card h4{margin:0 0 6px;font-size:15px}
+.card p{font-size:14px;color:var(--muted);margin:0}
+table{width:100%;border-collapse:collapse;font-size:14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--accent-soft);font-weight:600;font-size:13px}
+tr:last-child td{border-bottom:0}
+.tbl{overflow-x:auto}
+code,.mono{font-family:Consolas,"Cascadia Mono",Menlo,monospace;font-size:13px}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 9px;border-radius:999px;white-space:nowrap}
+.p-stp{background:var(--ok-soft);color:var(--ok)}
+.p-auto{background:var(--accent-soft);color:var(--accent)}
+.p-rev{background:var(--rev-soft);color:var(--rev)}
+.p-exc{background:var(--bad-soft);color:var(--bad)}
+.p-res{background:var(--warn-soft);color:var(--warn)}
+.callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0;max-width:820px;font-size:15px}
+.callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+.formula{font-family:Consolas,Menlo,monospace;font-size:13.5px;background:var(--code);border-radius:8px;padding:12px 14px;margin:10px 0;overflow-x:auto;white-space:pre}
+.flow{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0;overflow-x:auto}
+.flow svg{display:block;min-width:820px;width:100%;height:auto}
+.flow .box{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+.flow .box.ctl{fill:var(--warn-soft);stroke:var(--warn)}
+.flow .box.exc{fill:var(--bad-soft);stroke:var(--bad)}
+.flow .box.out{fill:var(--ok-soft);stroke:var(--ok)}
+.flow text{fill:var(--ink);font-family:"Segoe UI",system-ui,sans-serif}
+.flow .t{font-size:14px;font-weight:600}
+.flow .s{font-size:11.5px;fill:var(--muted)}
+.flow .arr{stroke:var(--muted);stroke-width:1.6;fill:none}
+.flow .lbl{font-size:11px;fill:var(--muted)}
+ol.steps{padding-left:20px;max-width:820px}
+ol.steps li{margin:6px 0}
+dl.gloss{display:grid;grid-template-columns:200px 1fr;gap:6px 18px;max-width:880px;font-size:15px}
+dl.gloss dt{font-weight:600}
+dl.gloss dd{margin:0;color:var(--muted)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+@media (max-width:900px){
+  .wrap{grid-template-columns:1fr;gap:0}
+  nav.toc{position:static;margin-bottom:16px}
+  dl.gloss{grid-template-columns:1fr}
+  h1{font-size:28px}
+}
+@media print{nav.toc{display:none}.wrap{grid-template-columns:1fr}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#purpose">Purpose &amp; scope</a></li>
+    <li><a href="#overview">Process at a glance</a></li>
+    <li><a href="#inputs">Market data inputs</a></li>
+    <li><a href="#transform">Normalise &amp; enrich</a></li>
+    <li><a href="#valuation">Valuation</a></li>
+    <li><a href="#controls">STP controls</a></li>
+    <li><a href="#statuses">Statuses &amp; STP rate</a></li>
+    <li><a href="#exceptions">Exception handling</a></li>
+    <li><a href="#reports">Reporting &amp; sign-off</a></li>
+    <li><a href="#margin">Margin calls</a></li>
+    <li><a href="#scenarios">Typical scenarios</a></li>
+    <li><a href="#governance">Governance &amp; KPIs</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Process overview</div>
+  <h1>End-of-Day Mark-to-Market (MTM) Process</h1>
+  <p class="lede">How a multi-asset fund turns raw vendor prices into signed-off fair values, P&amp;L and margin calls every night, and which controls decide whether each position can flow straight through or needs a person to look at it.</p>
+  <div class="meta">High-level reference for client support, operations and valuation teams · Based on the MTM Process Explorer sample book · All figures are illustrative</div>
+</header>
+
+<section id="purpose">
+  <h2>1. Purpose &amp; scope</h2>
+  <p><b>Mark-to-market</b> is the daily revaluation of every position at current market prices. The official end-of-day mark feeds the fund's NAV, daily P&amp;L, risk, collateral and margin processes, and regulatory and client reporting. When a mark is wrong, every one of those outputs is wrong too, so the process is built around automated controls with human review for the exceptions.</p>
+  <p>This document describes the process for a sample APAC multi-asset fund with USD as base currency, valued at the Asia close. The book holds four asset classes:</p>
+  <div class="grid">
+    <div class="card"><h4>Equities</h4><p>Listed shares on SGX, HKEX and TSE. Priced at exchange close.</p></div>
+    <div class="card"><h4>Bonds</h4><p>Government and corporate bonds. Priced clean as % of par; valued dirty (with accrued interest).</p></div>
+    <div class="card"><h4>Futures</h4><p>Exchange-traded index futures. Priced at exchange settlement, margined daily.</p></div>
+    <div class="card"><h4>FX forwards</h4><p>OTC hedges with a bank counterparty under an ISDA CSA. Priced at forward outright.</p></div>
+  </div>
+</section>
+
+<section id="overview">
+  <h2>2. Process at a glance</h2>
+  <p>The nightly batch runs in six stages. Most positions go straight from left to right without anyone touching them. Positions that fail a control are routed to the exception queue, and are released only after an analyst acts on them.</p>
+  <div class="flow" role="img" aria-label="MTM process flow: Inputs, Normalise and enrich, Valuation, STP controls, then either straight to Reports and sign-off, or via the Exception queue.">
+    <svg viewBox="0 0 1000 260" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="fill:var(--muted)"/></marker></defs>
+      <rect class="box" x="10" y="30" width="145" height="84" rx="10"/>
+      <text class="t" x="82" y="60" text-anchor="middle">1 · Inputs</text>
+      <text class="s" x="82" y="80" text-anchor="middle">Positions, vendor</text>
+      <text class="s" x="82" y="96" text-anchor="middle">prices, FX</text>
+
+      <rect class="box" x="185" y="30" width="145" height="84" rx="10"/>
+      <text class="t" x="257" y="60" text-anchor="middle">2 · Normalise</text>
+      <text class="s" x="257" y="80" text-anchor="middle">One schema; join static</text>
+      <text class="s" x="257" y="96" text-anchor="middle">data &amp; prior marks</text>
+
+      <rect class="box" x="360" y="30" width="145" height="84" rx="10"/>
+      <text class="t" x="432" y="60" text-anchor="middle">3 · Valuation</text>
+      <text class="s" x="432" y="80" text-anchor="middle">MV, exposure,</text>
+      <text class="s" x="432" y="96" text-anchor="middle">P&amp;L by component</text>
+
+      <rect class="box ctl" x="535" y="30" width="145" height="84" rx="10"/>
+      <text class="t" x="607" y="60" text-anchor="middle">4 · STP controls</text>
+      <text class="s" x="607" y="80" text-anchor="middle">Rules R1–R6</text>
+      <text class="s" x="607" y="96" text-anchor="middle">pass / auto / fail</text>
+
+      <rect class="box out" x="820" y="30" width="170" height="84" rx="10"/>
+      <text class="t" x="905" y="60" text-anchor="middle">6 · Reports &amp; sign-off</text>
+      <text class="s" x="905" y="80" text-anchor="middle">Valuation, P&amp;L, IPV,</text>
+      <text class="s" x="905" y="96" text-anchor="middle">margin, STP summary</text>
+
+      <rect class="box exc" x="620" y="160" width="200" height="84" rx="10"/>
+      <text class="t" x="720" y="190" text-anchor="middle">5 · Exception queue</text>
+      <text class="s" x="720" y="210" text-anchor="middle">Analyst override with reason,</text>
+      <text class="s" x="720" y="226" text-anchor="middle">or 4-eyes approval</text>
+
+      <path class="arr" d="M155,72 H183" marker-end="url(#ah)"/>
+      <path class="arr" d="M330,72 H358" marker-end="url(#ah)"/>
+      <path class="arr" d="M505,72 H533" marker-end="url(#ah)"/>
+      <path class="arr" d="M680,72 H818" marker-end="url(#ah)"/>
+      <text class="lbl" x="749" y="64" text-anchor="middle">STP / AUTO</text>
+      <path class="arr" d="M607,114 V202 H618" marker-end="url(#ah)"/>
+      <text class="lbl" x="560" y="160">EXCEPTION /</text>
+      <text class="lbl" x="560" y="174">REVIEW</text>
+      <path class="arr" d="M820,202 H905 V116" marker-end="url(#ah)"/>
+      <text class="lbl" x="912" y="170">RESOLVED</text>
+    </svg>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Stage</th><th>What happens</th><th>Main output</th></tr></thead>
+    <tbody>
+      <tr><td>1 · Inputs</td><td>Extract positions from the book of record. Load primary and secondary vendor price files and FX rates.</td><td>Raw vendor records</td></tr>
+      <tr><td>2 · Normalise &amp; enrich</td><td>Map every vendor format to one internal schema. Join static data, FX and the prior official mark on instrument ID.</td><td>Enriched records, ready to value</td></tr>
+      <tr><td>3 · Valuation</td><td>Apply the pricing model for each asset class. Translate to USD and split the daily P&amp;L into its drivers.</td><td>Market value, exposure, P&amp;L</td></tr>
+      <tr><td>4 · STP controls</td><td>Run six automated checks: completeness, staleness, source variance, day-on-day move, FX availability and materiality.</td><td>Status per position</td></tr>
+      <tr><td>5 · Exceptions</td><td>Analysts investigate failures, release a price with a documented reason, or give second-person approval.</td><td>Resolved positions with audit trail</td></tr>
+      <tr><td>6 · Reports</td><td>Produce the standard report pack. It stays DRAFT while anything is open and goes FINAL once every position is released.</td><td>RPT-01 to RPT-05</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="inputs">
+  <h2>3. Market data inputs</h2>
+  <p>Three kinds of data arrive each night:</p>
+  <ul>
+    <li><b>Positions.</b> Quantity per instrument and book (shares, bond nominal, futures lots, or forward notional), plus static data such as currency, contract multiplier, coupon schedule and IFRS 13 fair value level. Each position also carries <b>yesterday's signed-off mark</b>, which is the baseline for move checks and P&amp;L.</li>
+    <li><b>Vendor prices</b> from two independent sources. The <b>primary</b> vendor sets the official mark. The <b>secondary</b> vendor is the fallback when the primary is missing, and the benchmark for independent price verification (IPV). Every price carries an as-of date.</li>
+    <li><b>FX rates</b>, quoted as units of currency per 1 USD, again from a primary and a secondary source, alongside the prior day's rate.</li>
+  </ul>
+  <div class="tbl"><table>
+    <thead><tr><th>Asset class</th><th>Price type</th><th>Typical source</th><th>Fair value level</th></tr></thead>
+    <tbody>
+      <tr><td>Equities</td><td><code>CLOSE</code>: official exchange close</td><td>Exchange / market data vendor</td><td>Level 1</td></tr>
+      <tr><td>Government bonds</td><td><code>CLEAN_PCT_PAR</code></td><td>Composite or dealer quotes</td><td>Level 1</td></tr>
+      <tr><td>Corporate bonds</td><td><code>CLEAN_PCT_PAR</code></td><td>Evaluated pricing service</td><td>Level 2</td></tr>
+      <tr><td>Index futures</td><td><code>SETTLEMENT</code>: exchange settlement price</td><td>Exchange</td><td>Level 1</td></tr>
+      <tr><td>FX forwards</td><td><code>FWD_OUTRIGHT</code></td><td>FX vendor, curve-derived</td><td>Level 2</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="transform">
+  <h2>4. Normalise &amp; enrich</h2>
+  <p>Before anything is valued, each vendor record goes through the same pipeline. Any instrument can be traced end to end through these four forms:</p>
+  <ol class="steps">
+    <li><b>Raw:</b> the record exactly as the vendor delivered it, in the vendor's own field names and formats.</li>
+    <li><b>Normalised:</b> mapped to a single internal schema, whichever vendor it came from. The chosen price source (primary, secondary or analyst override) is recorded here.</li>
+    <li><b>Enriched:</b> static data, the applicable FX rate and the prior official mark are joined on instrument ID.</li>
+    <li><b>Valued:</b> the pricing model has run, producing market value, exposure and P&amp;L, together with the formula lines behind each number.</li>
+  </ol>
+  <div class="callout">Keeping all four forms makes every number in the final reports traceable back to the vendor file it came from. Auditors and client queries depend on that lineage.</div>
+</section>
+
+<section id="valuation">
+  <h2>5. Valuation</h2>
+  <p>Each asset class has its own valuation model. Every result is translated into USD at today's FX rate.</p>
+  <h3>Equities</h3>
+  <div class="formula">MV local = quantity × close price
+MV USD   = MV local ÷ FX(today)</div>
+  <h3>Bonds</h3>
+  <p>Quoted clean, valued dirty. Accrued interest uses the bond's day-count convention: ACT/ACT for government bonds and 30/360 for US corporates.</p>
+  <div class="formula">Accrued  = (coupon ÷ frequency) × elapsed days ÷ days in coupon period
+Dirty    = clean price + accrued
+MV local = nominal × dirty ÷ 100</div>
+  <h3>Futures</h3>
+  <p>Futures settle every day through the clearing house, so the carried market value resets to zero. What matters is the notional exposure and the cash variation margin.</p>
+  <div class="formula">Notional         = lots × multiplier × settlement price
+Variation margin = lots × multiplier × (settle today − settle yesterday)</div>
+  <h3>FX forwards</h3>
+  <div class="formula">DF      = 1 ÷ (1 + rate × days to maturity ÷ 365)
+MTM ccy = direction × notional × (forward outright − contract rate) × DF
+MTM USD = MTM ccy ÷ spot</div>
+
+  <h3>P&amp;L attribution</h3>
+  <p>The daily P&amp;L for each position is split into four drivers, so that analysts can see <i>why</i> a number moved:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Component</th><th>Meaning</th><th>Applies to</th></tr></thead>
+    <tbody>
+      <tr><td><b>Price effect</b></td><td>Change in local value, translated at today's FX</td><td>Equities, bonds, FX forwards</td></tr>
+      <tr><td><b>Carry</b></td><td>Coupon accrual between the two valuation dates</td><td>Bonds</td></tr>
+      <tr><td><b>FX translation</b></td><td>Prior local value × (1/FX<sub>t</sub> − 1/FX<sub>t−1</sub>)</td><td>All non-USD positions</td></tr>
+      <tr><td><b>Variation margin</b></td><td>Daily futures settlement cash flow</td><td>Futures</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="controls">
+  <h2>6. STP controls</h2>
+  <p>Six rules run on every position. A rule can <b>pass</b>, <b>auto-remediate</b> (a policy fixes the issue and the position stays straight-through), raise an <b>exception</b>, or require <b>4-eyes review</b>. Thresholds are configurable. The defaults are shown below.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Rule</th><th>Control</th><th>What it checks</th><th>Default threshold</th><th>Outcome on failure</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">R1</td><td>Completeness</td><td>Every position has a price. If the primary is missing, fall back to the secondary source.</td><td>Fallback enabled</td><td><span class="pill p-auto">Auto</span> if secondary used; <span class="pill p-exc">Exception</span> if no price at all</td></tr>
+      <tr><td class="mono">R2</td><td>Staleness</td><td>Primary price is dated within N business days of the valuation date.</td><td>1 business day</td><td><span class="pill p-auto">Auto</span> within tolerance; <span class="pill p-exc">Exception</span> beyond it</td></tr>
+      <tr><td class="mono">R3</td><td>Source variance (IPV)</td><td>Primary and secondary prices agree within tolerance.</td><td>0.50%</td><td><span class="pill p-exc">Exception</span></td></tr>
+      <tr><td class="mono">R4</td><td>Day-on-day move</td><td>Move versus the prior official mark stays inside the asset-class limit.</td><td>Equities 8% · Bonds 2% · Futures 8% · FX fwd 1.5%</td><td><span class="pill p-exc">Exception</span></td></tr>
+      <tr><td class="mono">R5</td><td>FX availability</td><td>Every non-USD position has a USD rate for translation.</td><td>Fallback to secondary</td><td><span class="pill p-auto">Auto</span> if secondary used; <span class="pill p-exc">Exception</span> if none</td></tr>
+      <tr><td class="mono">R6</td><td>Materiality (4-eyes)</td><td>Daily P&amp;L above the threshold needs a second approver before release.</td><td>USD 100,000</td><td><span class="pill p-rev">Review</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">Loosening a threshold raises the STP rate but lets more bad prices through. Tightening it catches more errors but adds manual work. Threshold changes should be governed by the valuation committee, not tuned night to night to get the queue to zero.</div>
+</section>
+
+<section id="statuses">
+  <h2>7. Statuses &amp; STP rate</h2>
+  <p>After the controls have run, each position has exactly one status:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Status</th><th>Meaning</th><th>Counts as STP?</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill p-stp">STP</span></td><td>Clean: every control passed.</td><td>Yes</td></tr>
+      <tr><td><span class="pill p-auto">AUTO</span></td><td>Auto-remediated by policy (for example a secondary-source fallback). No human action needed.</td><td>Yes</td></tr>
+      <tr><td><span class="pill p-rev">REVIEW</span></td><td>Passed every check but breached materiality. Waiting for second-person approval.</td><td>No</td></tr>
+      <tr><td><span class="pill p-exc">EXCEPTION</span></td><td>Failed at least one control. Blocked until an analyst acts.</td><td>No</td></tr>
+      <tr><td><span class="pill p-res">RESOLVED</span></td><td>Released by an analyst action (an override with a reason, or an approval).</td><td>No</td></tr>
+    </tbody>
+  </table></div>
+  <div class="formula">STP rate = (STP + AUTO) ÷ total positions</div>
+</section>
+
+<section id="exceptions">
+  <h2>8. Exception handling</h2>
+  <p>The exception queue is where valuation analysts spend their time. Each item shows the failing rule, the vendor prices, the variance and the move, so the analyst can decide quickly. There are two kinds of action:</p>
+  <div class="grid">
+    <div class="card"><h4>Release with reason</h4><p>For <b>EXCEPTION</b> items. The analyst confirms or supplies a price (or a manual FX rate) and picks a documented reason. The position becomes RESOLVED.</p></div>
+    <div class="card"><h4>4-eyes approval</h4><p>For <b>REVIEW</b> items. A second person checks the material P&amp;L and approves it. The person who prepared the price cannot approve it.</p></div>
+  </div>
+  <h3>Standard resolution reasons</h3>
+  <ul>
+    <li>Stale vendor price challenged; secondary accepted</li>
+    <li>Market move confirmed against news and exchange tape</li>
+    <li>Vendor error confirmed with data provider</li>
+    <li>Prior close carried pending vendor correction</li>
+    <li>Manual FX rate from WM/Reuters fix</li>
+    <li>Trader mark accepted after IPV review</li>
+  </ul>
+  <p>Every override keeps the original vendor values, the price that was applied, the reason and the user. That record feeds the IPV report and the audit trail.</p>
+</section>
+
+<section id="reports">
+  <h2>9. Reporting &amp; sign-off</h2>
+  <p>The batch produces a standard report pack. Each report is also available as CSV for downstream systems. The pack is marked <b>DRAFT</b> while any position is open, and <b>FINAL</b> once the queue is clear.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Code</th><th>Report</th><th>Contents</th><th>Main consumers</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">RPT-01</td><td>Daily MTM valuation</td><td>Position-level fair values by book, price source and fair value level</td><td>Fund accounting, NAV</td></tr>
+      <tr><td class="mono">RPT-02</td><td>P&amp;L attribution</td><td>Daily P&amp;L split into price, carry, FX translation and variation margin; return on NAV in bps</td><td>Portfolio managers, finance</td></tr>
+      <tr><td class="mono">RPT-03</td><td>Price exceptions &amp; IPV</td><td>Every control hit, the vendor variance and how it was resolved</td><td>Valuation control, audit</td></tr>
+      <tr><td class="mono">RPT-04</td><td>Margin call (CSA &amp; ETD)</td><td>OTC exposure against collateral under the CSA, and futures variation margin</td><td>Collateral management, treasury</td></tr>
+      <tr><td class="mono">RPT-05</td><td>STP control summary</td><td>STP rate, rule hit counts and the batch log</td><td>Operations management</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Typical batch timeline</h3>
+  <ol class="steps">
+    <li>Batch started</li>
+    <li>Positions extracted from the book of record</li>
+    <li>Primary and secondary vendor files loaded, with FX pairs</li>
+    <li>Validation complete (primary gaps identified)</li>
+    <li>Valuation complete</li>
+    <li>STP controls applied (released vs touched positions counted)</li>
+    <li>Reports staged as DRAFT (exceptions pending) or FINAL</li>
+  </ol>
+</section>
+
+<section id="margin">
+  <h2>10. Margin calls</h2>
+  <p>The official marks also drive the collateral that changes hands the next morning.</p>
+  <h3>OTC bilateral (ISDA VM CSA)</h3>
+  <p>The net MTM of all FX forwards with a counterparty is the <b>exposure</b>. It is compared with the collateral already held, and the CSA terms decide whether a call is made:</p>
+  <div class="formula">Credit support amount = max(exposure + independent amount − threshold, 0)
+Difference            = credit support amount − collateral held
+If difference  > MTA  → delivery amount: we call (rounded UP to rounding amount)
+If −difference > MTA  → return amount: we return (rounded DOWN)
+Otherwise             → no call (movement below minimum transfer amount)</div>
+  <p>When exposure is negative (we owe the counterparty), expect an inbound call from them on the same logic.</p>
+  <h3>Exchange-traded (futures)</h3>
+  <p>Variation margin for each contract is paid or received through the clearing broker every day. The report nets the contracts into a single pay or receive figure.</p>
+</section>
+
+<section id="scenarios">
+  <h2>11. Typical scenarios</h2>
+  <p>These five nights show how the controls behave in practice:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Scenario</th><th>What happens</th><th>Controls triggered</th></tr></thead>
+    <tbody>
+      <tr><td><b>Clean night</b></td><td>Every price is present, current and in tolerance.</td><td>None. 100% STP.</td></tr>
+      <tr><td><b>Typical night</b></td><td>The primary feed misses one equity, and the secondary fills the gap. One evaluated corporate bond is stale and disagrees with the secondary source.</td><td>R1 auto; R2 + R3 exception on the bond</td></tr>
+      <tr><td><b>Price spike</b></td><td>A large-cap equity prints 11% lower after a profit warning.</td><td>R4 exception (8% equity limit); R6 materiality review</td></tr>
+      <tr><td><b>Vendor mismatch</b></td><td>The secondary vendor marks a 10-year Treasury 0.8 points below primary.</td><td>R3 IPV exception</td></tr>
+      <tr><td><b>FX feed down</b></td><td>No USD/JPY rate from either source.</td><td>R5 exception on every JPY position until an analyst supplies a rate</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="governance">
+  <h2>12. Governance &amp; KPIs</h2>
+  <div class="grid">
+    <div class="card"><h4>Segregation of duties</h4><p>Front office does not set official marks. Material P&amp;L needs a second approver, and that approver cannot be the person who prepared the price.</p></div>
+    <div class="card"><h4>Independent price verification</h4><p>Primary prices are checked against an independent second source every night. Persistent variances are escalated to the vendor.</p></div>
+    <div class="card"><h4>Audit trail</h4><p>Raw vendor values, overrides, reasons, approvers and timestamps are all retained, and every reported number traces back to its source.</p></div>
+    <div class="card"><h4>Threshold governance</h4><p>Tolerances and move limits are reviewed periodically by the valuation committee and change only with documented approval.</p></div>
+  </div>
+  <h3>KPIs worth tracking</h3>
+  <ul>
+    <li><b>STP rate</b> per night and its trend, broken down by asset class and vendor</li>
+    <li><b>Rule hit counts</b>: which controls fire most, and how often an auto-fix is needed</li>
+    <li><b>Time to FINAL</b>: from batch start until the report pack is signed off</li>
+    <li><b>Vendor quality</b>: gaps, stale prices and IPV breaks per vendor</li>
+    <li><b>Override volume</b> by reason code, as an early warning of a weak source or control</li>
+  </ul>
+  <div class="callout warn"><b>Simplifications in this overview:</b> no holiday calendars (business days are weekdays only), no coupon cash flows or settlement lags, simple-interest discounting for FX forwards, USD cash collateral with no CSA interest. Production processes handle all of these.</div>
+</section>
+
+<section id="glossary">
+  <h2>13. Glossary</h2>
+  <dl class="gloss">
+    <dt>MTM</dt><dd>Mark-to-market: revaluing positions at current market prices.</dd>
+    <dt>STP</dt><dd>Straight-through processing: positions released without manual intervention.</dd>
+    <dt>IPV</dt><dd>Independent price verification: checking prices against an independent source.</dd>
+    <dt>4-eyes</dt><dd>A control that requires a second person to approve before release.</dd>
+    <dt>Clean / dirty price</dt><dd>A bond price without (clean) or with (dirty) accrued interest.</dd>
+    <dt>Variation margin (VM)</dt><dd>Daily cash exchanged to cover mark-to-market changes.</dd>
+    <dt>CSA</dt><dd>Credit Support Annex to an ISDA master agreement, which sets the collateral terms.</dd>
+    <dt>MTA</dt><dd>Minimum transfer amount: calls smaller than this are not made.</dd>
+    <dt>Threshold / IA</dt><dd>Unsecured exposure allowed before collateral is due / extra collateral posted regardless of MTM.</dd>
+    <dt>ETD</dt><dd>Exchange-traded derivative, such as a listed future.</dd>
+    <dt>IFRS 13 levels</dt><dd>Fair value hierarchy: Level 1 is quoted prices, Level 2 is observable inputs, Level 3 is unobservable inputs.</dd>
+    <dt>NAV</dt><dd>Net asset value of the fund.</dd>
+  </dl>
+</section>
+
+<footer>
+  Companion overview to the MTM Process Explorer, an interactive walkthrough of the same process. The fund, counterparty, issuer and all figures are fictional and for illustration only. This is not valuation policy or investment advice.
+</footer>
+</main>
+</div>
+</body>
+</html>
