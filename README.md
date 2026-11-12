@@ -4,6 +4,6 @@ A high-level reference for the end-of-day mark-to-market (MTM) process: market d
 
 **Live site:** https://jkullappagari.github.io/mtm-process-overview/
 
-It is the written companion to the interactive *MTM Process Explorer*. The site is a single static `index.html` with no build step, published with GitHub Pages from the `main` branch.
+It is the written companion to the interactive [MTM Process Explorer](https://claude.ai/artifact/2KKmcY3ZRmRN8Z1HSUaxPD) and uses the same design tokens and typefaces. The site is a single static `index.html` with no build step, published with GitHub Pages from the `main` branch.
 
 All data and names are fictional and for illustration only.
